@@ -9,6 +9,7 @@ import visitRoutes from './routes/visits.js';
 import deliveryRoutes from './routes/deliveries.js';
 import trackingRoutes from './routes/tracking.js';
 import adminRoutes from './routes/admin.js';
+import salesRoutes from './routes/sales.js';
 
 const app = express();
 app.use(cors());
@@ -20,6 +21,7 @@ app.use('/api/visits', visitRoutes);
 app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/sales', salesRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

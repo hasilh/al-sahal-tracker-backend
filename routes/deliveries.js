@@ -30,7 +30,7 @@ function applyDateFilter(query, filter, field = 'created_at') {
 
 // ── Log a delivery ────────────────────────────────────────────────
 router.post('/', authenticate, async (req, res) => {
-  const { invoice_number, delivered_person, payment_method, lat, lng } = req.body;
+  const { invoice_number, delivered_person, payment_method, lat, lng, amount, is_sale } = req.body;
   if (!invoice_number || !delivered_person || !payment_method) {
     return res.status(400).json({ error: 'All fields are required' });
   }
@@ -49,17 +49,37 @@ router.post('/', authenticate, async (req, res) => {
       if (locData) { delivLat = locData.lat; delivLng = locData.lng; }
     }
 
+    const status = payment_method === 'not_paid' ? 'not_paid' : 'paid';
+
     const { data, error } = await supabase.from('delivery_logs').insert([{
       user_id: req.user.id,
       salesman_name: req.user.name,
       invoice_number,
       delivered_person,
       payment_method,
-      status: payment_method === 'not_paid' ? 'not_paid' : 'paid',
+      status,
+      amount: amount || 0,
+      is_sale: !!is_sale,
       lat: delivLat,
       lng: delivLng
     }]).select().single();
     if (error) return res.status(400).json({ error: error.message });
+
+    // Mirror into sales_log when "My Sales" was checked
+    if (is_sale) {
+      await supabase.from('sales_log').insert([{
+        user_id: req.user.id,
+        salesman_name: req.user.name,
+        invoice_number,
+        delivered_to: delivered_person,
+        amount: amount || 0,
+        payment_method,
+        status,
+        source: 'delivery',
+        linked_delivery_id: data.id
+      }]);
+    }
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -152,6 +172,11 @@ router.patch('/request-payment/:id', authenticate, async (req, res) => {
       .single();
     if (error) return res.status(400).json({ error: error.message });
 
+    await supabase
+      .from('sales_log')
+      .update({ status: 'pending_approval', payment_method })
+      .eq('linked_delivery_id', req.params.id);
+
     await supabase.from('notifications').insert([{
       message: `${req.user.name} marked invoice ${data.invoice_number} as paid`,
       type: 'payment_pending'
@@ -178,6 +203,13 @@ router.patch('/approve/:id', authenticate, async (req, res) => {
       .select()
       .single();
     if (error) return res.status(400).json({ error: error.message });
+
+    // Keep the mirrored sales_log row (if any) in sync
+    await supabase
+      .from('sales_log')
+      .update({ status: 'paid', approved_by: req.user.id, approved_at: new Date().toISOString() })
+      .eq('linked_delivery_id', req.params.id);
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
