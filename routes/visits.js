@@ -27,6 +27,7 @@ function applyDateFilter(query, filter, field = 'visited_at') {
   return query;
 }
 
+// ── Create visit ──────────────────────────────────────────────────
 router.post('/', authenticate, async (req, res) => {
   const { company_name, contact_name, mobile, email_id, quotation, quotation_description, lat, lng } = req.body;
   if (!company_name || !contact_name || !mobile)
@@ -60,6 +61,7 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+// ── Get visits ────────────────────────────────────────────────────
 router.get('/', authenticate, async (req, res) => {
   const { filter, user_id } = req.query;
   try {
@@ -77,6 +79,82 @@ router.get('/', authenticate, async (req, res) => {
     query = applyDateFilter(query, filter, 'visited_at');
 
     const { data, error } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Salesman requests edit (stored as pending, notifies admin) ────
+router.patch('/:id/request-edit', authenticate, async (req, res) => {
+  const { company_name, contact_name, mobile, email_id, quotation, quotation_description } = req.body;
+  try {
+    const { data: original } = await supabase
+      .from('visits').select('*').eq('id', req.params.id).single();
+    if (!original) return res.status(404).json({ error: 'Visit not found' });
+    if (req.user.role === 'salesman' && original.user_id !== req.user.id)
+      return res.status(403).json({ error: 'Not your record' });
+
+    const proposed = {};
+    if (company_name !== undefined) proposed.company_name = company_name;
+    if (contact_name !== undefined) proposed.contact_name = contact_name;
+    if (mobile !== undefined) proposed.mobile = mobile;
+    if (email_id !== undefined) proposed.email_id = email_id;
+    if (quotation !== undefined) proposed.quotation = quotation;
+    if (quotation_description !== undefined) proposed.quotation_description = quotation_description;
+
+    const pendingEdit = JSON.stringify({
+      original: {
+        company_name: original.company_name,
+        contact_name: original.contact_name,
+        mobile: original.mobile,
+        email_id: original.email_id,
+        quotation: original.quotation,
+        quotation_description: original.quotation_description
+      },
+      proposed,
+      requested_by: req.user.name,
+      requested_at: new Date().toISOString()
+    });
+
+    const { data, error } = await supabase
+      .from('visits')
+      .update({ pending_edit: pendingEdit, edit_status: 'pending' })
+      .eq('id', req.params.id)
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+
+    await supabase.from('notifications').insert([{
+      message: `${req.user.name} requested an edit on visit to ${original.company_name}`,
+      type: 'edit_request'
+    }]);
+
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin approves or rejects a visit edit ────────────────────────
+router.patch('/:id/approve-edit', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' });
+  const { approve } = req.body;
+  try {
+    const { data: visit } = await supabase
+      .from('visits').select('*').eq('id', req.params.id).single();
+    if (!visit) return res.status(404).json({ error: 'Visit not found' });
+
+    let update = {};
+    if (approve) {
+      const pending = JSON.parse(visit.pending_edit || '{}');
+      update = { ...pending.proposed, edit_status: 'approved', pending_edit: null };
+    } else {
+      update = { edit_status: 'rejected', pending_edit: null };
+    }
+
+    const { data, error } = await supabase
+      .from('visits').update(update).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
   } catch (err) {

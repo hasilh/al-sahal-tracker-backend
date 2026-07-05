@@ -142,4 +142,36 @@ router.patch('/approve/:id', authenticate, async (req, res) => {
   }
 });
 
+// insert after the existing `router.patch('/approve/:id', ...)` block, before `export default router;`
+
+// ── Admin directly marks a sale as paid (bypasses salesman) ───────
+router.patch('/admin-mark-paid/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' });
+  const { payment_method } = req.body;
+  if (!payment_method) return res.status(400).json({ error: 'Payment method required' });
+  try {
+    const { data, error } = await supabase
+      .from('sales_log')
+      .update({
+        status: 'paid',
+        payment_method,
+        approved_by: req.user.id,
+        approved_at: new Date().toISOString()
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+
+    await supabase.from('notifications').insert([{
+      message: `Admin marked sale invoice ${data.invoice_number} as paid directly`,
+      type: 'payment_pending'
+    }]);
+
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
