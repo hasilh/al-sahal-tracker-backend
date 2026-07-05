@@ -29,7 +29,7 @@ function applyDateFilter(query, filter, field = 'created_at') {
 
 // ── Log a sale ─────────────────────────────────────────────────────
 router.post('/', authenticate, async (req, res) => {
-  const { invoice_number, delivered_to, amount, payment_method } = req.body;
+  const { invoice_number, company_name, delivered_to, amount, payment_method } = req.body;
   if (!invoice_number || !delivered_to || !payment_method) {
     return res.status(400).json({ error: 'Invoice number, delivered to and payment method are required' });
   }
@@ -38,11 +38,12 @@ router.post('/', authenticate, async (req, res) => {
       user_id: req.user.id,
       salesman_name: req.user.name,
       invoice_number,
+      company_name: company_name || null,
       delivered_to,
       amount: amount || 0,
       payment_method,
       status: payment_method === 'not_paid' ? 'not_paid' : 'paid',
-      source: 'sales'
+      source: 'manual'
     }]).select().single();
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
