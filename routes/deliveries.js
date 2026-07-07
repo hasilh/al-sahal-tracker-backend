@@ -63,11 +63,12 @@ router.post('/', authenticate, async (req, res) => {
     }]).select().single();
     if (error) return res.status(400).json({ error: error.message });
 
-    if (is_sale) {
+if (is_sale) {
       await supabase.from('sales_log').insert([{
         user_id: req.user.id,
         salesman_name: req.user.name,
         invoice_number,
+        company_name: company_name || null,
         delivered_to: delivered_person,
         amount: amount || 0,
         payment_method,
