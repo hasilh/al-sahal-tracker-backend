@@ -174,4 +174,26 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 });
 
+// ── Admin directly edits a visit (no approval needed) ─────────────
+router.patch('/:id/admin-edit', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' });
+  const { company_name, contact_name, mobile, email_id, quotation, quotation_description } = req.body;
+  try {
+    const update = {};
+    if (company_name !== undefined) update.company_name = company_name;
+    if (contact_name !== undefined) update.contact_name = contact_name;
+    if (mobile !== undefined) update.mobile = mobile;
+    if (email_id !== undefined) update.email_id = email_id;
+    if (quotation !== undefined) update.quotation = quotation;
+    if (quotation_description !== undefined) update.quotation_description = quotation_description;
+
+    const { data, error } = await supabase
+      .from('visits').update(update).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

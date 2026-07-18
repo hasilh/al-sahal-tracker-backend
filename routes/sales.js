@@ -260,4 +260,25 @@ router.patch('/approve-edit/:id', authenticate, async (req, res) => {
   }
 });
 
+// ── Admin directly edits a sale (no approval needed) ───────────────
+router.patch('/:id/admin-edit', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' });
+  const { invoice_number, company_name, delivered_to, amount, payment_method } = req.body;
+  try {
+    const update = {};
+    if (invoice_number !== undefined) update.invoice_number = invoice_number;
+    if (company_name !== undefined) update.company_name = company_name;
+    if (delivered_to !== undefined) update.delivered_to = delivered_to;
+    if (amount !== undefined) update.amount = amount;
+    if (payment_method !== undefined) update.payment_method = payment_method;
+
+    const { data, error } = await supabase
+      .from('sales_log').update(update).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
