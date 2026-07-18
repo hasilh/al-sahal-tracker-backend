@@ -317,4 +317,17 @@ router.patch('/approve-edit/:id', authenticate, async (req, res) => {
   }
 });
 
+// ── Admin deletes a delivery (cascades to linked sales_log entry) ─
+router.delete('/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' });
+  try {
+    await supabase.from('sales_log').delete().eq('linked_delivery_id', req.params.id);
+    const { error } = await supabase.from('delivery_logs').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

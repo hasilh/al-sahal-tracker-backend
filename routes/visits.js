@@ -162,4 +162,16 @@ router.patch('/:id/approve-edit', authenticate, async (req, res) => {
   }
 });
 
+// ── Admin deletes a visit ─────────────────────────────────────────
+router.delete('/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' });
+  try {
+    const { error } = await supabase.from('visits').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
